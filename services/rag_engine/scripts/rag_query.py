@@ -16,6 +16,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 from sentence_transformers import SentenceTransformer
 from pyvi import ViTokenizer
+import google.generativeai as genai
 
 # Configure logging
 logging.basicConfig(
@@ -32,11 +33,20 @@ class RAGQueryEngine:
         self.qdrant_host = os.getenv("QDRANT_HOST", "qdrant")
         self.qdrant_port = int(os.getenv("QDRANT_PORT", "6333"))
         
+        # Gemini configuration
+        self.gemini_api_key = os.getenv("GEMINI_API_KEY")
+        if not self.gemini_api_key:
+            raise ValueError("GEMINI_API_KEY environment variable is required")
+        
         # Initialize clients
         self.qdrant_client = QdrantClient(
             host=self.qdrant_host,
             port=self.qdrant_port
         )
+        
+        # Configure Gemini
+        genai.configure(api_key=self.gemini_api_key)
+        self.gemini_model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Load Vietnamese embedding model
         logger.info("🇻🇳 Loading Vietnamese embedding model...")
@@ -148,13 +158,47 @@ class RAGQueryEngine:
         return "\n".join(context_parts)
     
     def generate_high_quality_response(self, query: str, context: str) -> str:
-        """Generate high-quality response based on filtered context"""
-        logger.info("🤖 Generating high-quality response...")
+        """Generate high-quality response using Gemini API"""
+        logger.info("🤖 Generating high-quality response with Gemini...")
         
-        if context.strip():
-            return f"**Câu trả lời chất lượng cao cho:** '{query}'\n\n{context}"
-        else:
+        if not context.strip():
             return f"Không tìm thấy thông tin chất lượng cao cho câu hỏi: '{query}'\n\n💡 **Gợi ý:** Hãy thử diễn đạt câu hỏi khác hoặc sử dụng từ khóa cụ thể hơn."
+        
+        try:
+            # Create prompt for Gemini
+            prompt = f"""
+Bạn là một trợ lý AI chuyên về PokeMMO, một game Pokemon online. Hãy trả lời câu hỏi của người dùng dựa trên thông tin được cung cấp.
+
+**Câu hỏi của người dùng:** {query}
+
+**Thông tin tham khảo chất lượng cao:**
+{context}
+
+**Hướng dẫn trả lời:**
+1. Trả lời chính xác dựa trên thông tin được cung cấp
+2. Nếu có thông tin không chính xác, hãy nói rõ
+3. Trả lời bằng tiếng Việt, thân thiện và dễ hiểu
+4. Nếu cần thêm thông tin, hãy đề xuất người dùng tìm hiểu thêm
+5. Nếu có link hoặc hình ảnh liên quan, hãy đề cập đến
+6. Ưu tiên thông tin có độ liên quan cao (score > 0.6 cho docs, > 0.7 cho Q&A)
+
+**Trả lời:**
+"""
+            
+            # Generate response with Gemini
+            response = self.gemini_model.generate_content(prompt)
+            
+            if response.text:
+                logger.info("✅ High-quality response generated with Gemini")
+                return response.text
+            else:
+                logger.warning("⚠️ Empty response from Gemini")
+                return f"**Câu trả lời chất lượng cao cho:** '{query}'\n\n{context}"
+                
+        except Exception as e:
+            logger.error(f"❌ Failed to generate response with Gemini: {e}")
+            # Fallback to simple response
+            return f"**Câu trả lời chất lượng cao cho:** '{query}'\n\n{context}"
     
     def query(self, user_query: str, max_docs: int = 3, max_qa: int = 3) -> Dict[str, Any]:
         """High-quality RAG query with strict thresholds"""

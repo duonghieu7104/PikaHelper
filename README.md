@@ -6,3 +6,6 @@
 
 
 - tạo embedding: docker-compose run --rm embedding-service python scripts/generate_embeddings.py
+
+
+- rag: docker-compose run --rm embedding-service python rag_scripts/rag_query.py "Làm thế nào để tải game PokeMMO cho IOS?"
