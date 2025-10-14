@@ -211,7 +211,8 @@ services:
       - "8000:8000"
     volumes:
       - ./services/chatbot_api:/app # Mount entire service folder
-      - ./scripts:/app/scripts # Mount scripts folder
+      - ./services/rag_engine/scripts:/app/rag_scripts # Mount RAG engine scripts
+      - ./cache:/root/.cache # Mount cache folder for model persistence
     depends_on:
       - qdrant
       - redis

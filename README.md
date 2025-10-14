@@ -8,4 +8,8 @@
 - tạo embedding: docker-compose run --rm embedding-service python scripts/generate_embeddings.py
 
 
-- rag: docker-compose run --rm embedding-service python rag_scripts/rag_query.py "Làm thế nào để tải game PokeMMO cho IOS?"
+- rag tạo container mới: docker-compose run --rm embedding-service python rag_scripts/rag_query.py "Làm thế nào để tải game PokeMMO cho IOS?"
+
+- rag tối ưu: docker-compose exec embedding-service python rag_scripts/rag_query.py "xây dựng đội hình PvP công "
+
+- rag interactive (tối ưu nhất): docker-compose exec embedding-service python rag_scripts/rag_query.py

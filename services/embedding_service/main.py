@@ -19,6 +19,9 @@ from pydantic import BaseModel
 # Import ONNX processor
 from onnx_processor import ONNXEmbeddingProcessor
 
+# Add RAG scripts to path
+sys.path.append('/app/rag_scripts')
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -36,6 +39,15 @@ class EmbeddingResponse(BaseModel):
     model_name: str
     
     model_config = {"protected_namespaces": ()}
+
+# RAG models
+class RAGQueryRequest(BaseModel):
+    query: str
+
+class RAGQueryResponse(BaseModel):
+    response: str
+    sources: list
+    metadata: dict
 
 class EmbeddingService:
     def __init__(self):
@@ -89,11 +101,22 @@ class EmbeddingService:
 
 # Initialize services
 embedding_service = EmbeddingService()
+rag_engine = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan event handler for startup and shutdown"""
     # Startup
+    global rag_engine
+    try:
+        logger.info("🤖 Initializing RAG engine...")
+        from rag_query import RAGQueryEngine
+        rag_engine = RAGQueryEngine()
+        logger.info("✅ RAG engine initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize RAG engine: {e}")
+        rag_engine = None
+    
     logger.info("Embedding service started - ready for development")
     yield
     # Shutdown (if needed)
@@ -153,6 +176,46 @@ async def health_check():
         "version": "1.0.0",
         "environment": "development"
     }
+
+@app.post("/rag/query", response_model=RAGQueryResponse)
+async def rag_query(request: RAGQueryRequest):
+    """RAG query endpoint"""
+    try:
+        if rag_engine is None:
+            raise HTTPException(status_code=503, detail="RAG engine not initialized")
+        
+        logger.info(f"🔍 Processing RAG query: {request.query}")
+        result = rag_engine.query(request.query)
+        
+        # Format sources for API response
+        sources = []
+        for doc in result['context']['documents']:
+            sources.append({
+                "source_id": len(sources) + 1,
+                "file_name": doc['file_name'],
+                "score": doc['score'],
+                "preview": doc['content'],
+                "source_type": "document"
+            })
+        
+        for qa in result['context']['qa_pairs']:
+            sources.append({
+                "source_id": len(sources) + 1,
+                "file_name": f"Q&A: {qa['question'][:50]}...",
+                "score": qa['score'],
+                "preview": qa['answer'],
+                "source_type": "qa"
+            })
+        
+        return RAGQueryResponse(
+            response=result['response'],
+            sources=sources,
+            metadata=result['metadata']
+        )
+        
+    except Exception as e:
+        logger.error(f"RAG query failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/preprocess")
 async def preprocess_text(text: str):

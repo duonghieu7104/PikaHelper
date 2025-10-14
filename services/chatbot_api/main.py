@@ -18,6 +18,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+# No direct RAG import - use embedding-service instead
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -66,35 +68,51 @@ class ChatbotService:
     def __init__(self):
         self.embedding_service_url = os.getenv("EMBEDDING_SERVICE_URL", "http://embedding-service:8001")
         
-    def generate_response(self, query: str, context: List[Dict[str, Any]] = None) -> str:
-        """Generate response using simple template (no Gemini for now)"""
+    async def call_rag_service(self, query: str) -> Dict[str, Any]:
+        """Call embedding-service RAG endpoint"""
         try:
-            # Simple response template
-            if context:
-                context_text = "\n".join([doc.get("content", "") for doc in context])
-                response = f"""Dựa trên thông tin có sẵn:
-
-{context_text}
-
-Câu trả lời cho câu hỏi "{query}": Đây là một câu hỏi về PokeMMO. Tôi đang trong quá trình phát triển và sẽ có thể trả lời chi tiết hơn sau khi hệ thống được hoàn thiện."""
-            else:
-                response = f"""Xin chào! Tôi là trợ lý AI cho game PokeMMO. 
+            import httpx
+            async with httpx.AsyncClient() as client:
+                response = await client.post(
+                    f"{self.embedding_service_url}/rag/query",
+                    json={"query": query},
+                    timeout=60.0
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as e:
+            logger.error(f"Failed to call RAG service: {e}")
+            return None
+        
+    async def generate_response(self, query: str, context: List[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Generate response using embedding-service RAG"""
+        try:
+            logger.info(f"🔍 Calling RAG service for query: {query}")
+            
+            # Call embedding-service RAG endpoint
+            rag_result = await self.call_rag_service(query)
+            
+            if rag_result is None:
+                # Fallback response
+                return {
+                    "response": f"""Xin chào! Tôi là trợ lý AI cho game PokeMMO. 
 
 Câu hỏi của bạn: "{query}"
 
-Hiện tại tôi đang trong quá trình phát triển. Hệ thống sẽ sớm có thể:
-- Hướng dẫn tải và cài đặt game
-- Hướng dẫn hoàn thành cốt truyện  
-- Tư vấn về PvP và xây dựng đội hình
-- Hướng dẫn kiếm tiền trong game
-
-Hãy thử lại sau nhé!"""
+Hiện tại hệ thống RAG đang được khởi tạo. Vui lòng thử lại sau vài giây.""",
+                    "sources": [],
+                    "metadata": {"status": "rag_service_unavailable"}
+                }
             
-            return response
+            return rag_result
             
         except Exception as e:
             logger.error(f"Failed to generate response: {e}")
-            return "Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại sau."
+            return {
+                "response": "Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại sau.",
+                "sources": [],
+                "metadata": {"error": str(e)}
+            }
 
 # Initialize services
 chatbot_service = ChatbotService()
@@ -121,35 +139,18 @@ async def search_similar_chunks(query: str, limit: int = 5) -> List[Dict[str, An
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatMessage):
-    """Main chat endpoint"""
+    """Main chat endpoint with RAG integration"""
     try:
         # Generate session ID if not provided
         session_id = request.session_id or str(uuid.uuid4())
         
-        # Search for relevant context
-        context = await search_similar_chunks(request.message, limit=5)
-        
-        # Generate response
-        response_text = chatbot_service.generate_response(
-            request.message, 
-            context
-        )
-        
-        # Format sources
-        sources = []
-        for i, doc in enumerate(context, 1):
-            sources.append({
-                "source_id": i,
-                "file_name": doc.get("file_name", ""),
-                "file_path": doc.get("file_path", ""),
-                "score": doc.get("score", 0.0),
-                "preview": doc.get("content", "")[:200] + "..." if len(doc.get("content", "")) > 200 else doc.get("content", "")
-            })
+        # Generate response using RAG engine
+        rag_result = await chatbot_service.generate_response(request.message)
         
         return ChatResponse(
-            response=response_text,
+            response=rag_result["response"],
             session_id=session_id,
-            sources=sources,
+            sources=rag_result["sources"],
             timestamp=datetime.now().isoformat()
         )
         
