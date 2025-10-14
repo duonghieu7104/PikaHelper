@@ -15,6 +15,9 @@ RUN pip install --no-cache-dir --timeout 1000 --retries 5 torch==2.1.0 torchvisi
 COPY requirements.txt .
 RUN pip install --no-cache-dir --timeout 1000 --retries 5 -r requirements.txt
 
+# Copy Vietnamese model from local directory (will be copied from parent context)
+# Note: Model files should be copied using docker-compose volumes or manual copy
+
 # Copy application code
 COPY . .
 
