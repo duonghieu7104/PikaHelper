@@ -189,6 +189,9 @@ async def rag_query(request: RAGQueryRequest):
         
         # Format sources for API response
         sources = []
+        all_images = []
+        all_links = []
+        
         for doc in result['context']['documents']:
             sources.append({
                 "source_id": len(sources) + 1,
@@ -197,6 +200,21 @@ async def rag_query(request: RAGQueryRequest):
                 "preview": doc['content'],
                 "source_type": "document"
             })
+            
+            # Extract images and links from document metadata
+            if 'metadata' in doc and doc['metadata']:
+                metadata = doc['metadata']
+                logger.info(f"Document {doc['file_name']} - metadata: {metadata}")
+                
+                if 'images' in metadata and metadata['images']:
+                    all_images.extend(metadata['images'])
+                    logger.info(f"Found {len(metadata['images'])} images: {metadata['images']}")
+                
+                if 'urls' in metadata and metadata['urls']:
+                    all_links.extend(metadata['urls'])
+                    logger.info(f"Found {len(metadata['urls'])} links: {metadata['urls']}")
+            else:
+                logger.info(f"Document {doc['file_name']} - no metadata found")
         
         for qa in result['context']['qa_pairs']:
             sources.append({
@@ -210,7 +228,11 @@ async def rag_query(request: RAGQueryRequest):
         return RAGQueryResponse(
             response=result['response'],
             sources=sources,
-            metadata=result['metadata']
+            metadata={
+                **result['metadata'],
+                "images": list(set(all_images)),  # Remove duplicates
+                "links": list(set(all_links))     # Remove duplicates
+            }
         )
         
     except Exception as e:

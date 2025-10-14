@@ -43,6 +43,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add UTF-8 encoding support
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+
 # Request/Response models
 class ChatMessage(BaseModel):
     message: str
@@ -54,6 +58,8 @@ class ChatResponse(BaseModel):
     session_id: str
     sources: List[Dict[str, Any]]
     timestamp: str
+    images: List[str] = []
+    links: List[str] = []
 
 class SearchRequest(BaseModel):
     query: str
@@ -151,7 +157,9 @@ async def chat(request: ChatMessage):
             response=rag_result["response"],
             session_id=session_id,
             sources=rag_result["sources"],
-            timestamp=datetime.now().isoformat()
+            timestamp=datetime.now().isoformat(),
+            images=rag_result.get("metadata", {}).get("images", []),
+            links=rag_result.get("metadata", {}).get("links", [])
         )
         
     except Exception as e:

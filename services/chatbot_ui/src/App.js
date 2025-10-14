@@ -151,6 +151,57 @@ const SourceItem = styled.div`
   opacity: 0.8;
 `;
 
+const ImageContainer = styled.div`
+  margin: 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+`;
+
+const ImageItem = styled.img`
+  max-width: 200px;
+  max-height: 200px;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  cursor: pointer;
+  transition: transform 0.2s;
+  
+  &:hover {
+    transform: scale(1.05);
+  }
+`;
+
+const LinkContainer = styled.div`
+  margin: 10px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+`;
+
+const LinkItem = styled.a`
+  color: #667eea;
+  text-decoration: none;
+  padding: 8px 12px;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 15px;
+  font-size: 12px;
+  transition: all 0.2s;
+  cursor: pointer;
+  display: inline-block;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  
+  &:hover {
+    background: rgba(102, 126, 234, 0.2);
+    text-decoration: underline;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+  }
+  
+  &:active {
+    transform: translateY(0);
+  }
+`;
+
 const InputContainer = styled.div`
   padding: 20px;
   background: white;
@@ -232,186 +283,223 @@ const WelcomeText = styled.p`
 `;
 
 function App() {
-    const [messages, setMessages] = useState([]);
-    const [input, setInput] = useState('');
-    const [isLoading, setIsLoading] = useState(false);
-    const [sessionId, setSessionId] = useState(null);
-    const messagesEndRef = useRef(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [sessionId, setSessionId] = useState(null);
+  const messagesEndRef = useRef(null);
 
-    const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
-    useEffect(() => {
-        // Generate session ID
-        const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        setSessionId(newSessionId);
-    }, []);
+  useEffect(() => {
+    // Generate session ID
+    const newSessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    setSessionId(newSessionId);
+  }, []);
 
-    useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const sendMessage = async () => {
+    if (!input.trim() || isLoading) return;
+
+    const userMessage = {
+      role: 'user',
+      content: input.trim(),
+      timestamp: new Date().toISOString()
     };
 
-    const sendMessage = async () => {
-        if (!input.trim() || isLoading) return;
+    setMessages(prev => [...prev, userMessage]);
+    setInput('');
+    setIsLoading(true);
 
-        const userMessage = {
-            role: 'user',
-            content: input.trim(),
-            timestamp: new Date().toISOString()
-        };
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: input.trim(),
+          session_id: sessionId
+        })
+      });
 
-        setMessages(prev => [...prev, userMessage]);
-        setInput('');
-        setIsLoading(true);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-        try {
-            const response = await fetch(`${API_BASE_URL}/chat`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    message: input.trim(),
-                    session_id: sessionId
-                })
-            });
+      const data = await response.json();
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
+      const botMessage = {
+        role: 'assistant',
+        content: data.response,
+        timestamp: data.timestamp,
+        sources: data.sources || [],
+        images: data.images || [],
+        links: data.links || []
+      };
 
-            const data = await response.json();
+      setMessages(prev => [...prev, botMessage]);
+    } catch (error) {
+      console.error('Error sending message:', error);
+      const errorMessage = {
+        role: 'assistant',
+        content: 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại sau.',
+        timestamp: new Date().toISOString(),
+        isError: true
+      };
+      setMessages(prev => [...prev, errorMessage]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-            const botMessage = {
-                role: 'assistant',
-                content: data.response,
-                timestamp: data.timestamp,
-                sources: data.sources || []
-            };
+  const clearChat = async () => {
+    if (!sessionId) return;
 
-            setMessages(prev => [...prev, botMessage]);
-        } catch (error) {
-            console.error('Error sending message:', error);
-            const errorMessage = {
-                role: 'assistant',
-                content: 'Xin lỗi, đã có lỗi xảy ra. Vui lòng thử lại sau.',
-                timestamp: new Date().toISOString(),
-                isError: true
-            };
-            setMessages(prev => [...prev, errorMessage]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
+    try {
+      await fetch(`${API_BASE_URL}/chat/history/${sessionId}`, {
+        method: 'DELETE'
+      });
+      setMessages([]);
+    } catch (error) {
+      console.error('Error clearing chat:', error);
+    }
+  };
 
-    const clearChat = async () => {
-        if (!sessionId) return;
+  const handleKeyPress = (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  };
 
-        try {
-            await fetch(`${API_BASE_URL}/chat/history/${sessionId}`, {
-                method: 'DELETE'
-            });
-            setMessages([]);
-        } catch (error) {
-            console.error('Error clearing chat:', error);
-        }
-    };
+  const formatMessage = (content) => {
+    return content;
+  };
 
-    const handleKeyPress = (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            sendMessage();
-        }
-    };
+  return (
+    <AppContainer>
+      <ChatContainer>
+        <Header>
+          <Title>PikaHelper Chatbot</Title>
+          <Subtitle>Trợ lý AI chuyên về hướng dẫn game PokeMMO</Subtitle>
+          <ClearButton onClick={clearChat}>
+            <Trash2 size={16} />
+            Xóa lịch sử
+          </ClearButton>
+        </Header>
 
-    const formatMessage = (content) => {
-        return content;
-    };
+        <MessagesContainer>
+          {messages.length === 0 ? (
+            <WelcomeMessage>
+              <WelcomeTitle>Chào mừng đến với PikaHelper!</WelcomeTitle>
+              <WelcomeText>
+                Tôi là trợ lý AI chuyên về hướng dẫn game PokeMMO. Tôi có thể giúp bạn:
+                <br />• Hướng dẫn tải và cài đặt game
+                <br />• Hướng dẫn hoàn thành cốt truyện
+                <br />• Tư vấn về PvP và xây dựng đội hình
+                <br />• Hướng dẫn kiếm tiền trong game
+                <br />• Và nhiều hơn nữa!
+                <br /><br />Hãy đặt câu hỏi để bắt đầu!
+              </WelcomeText>
+            </WelcomeMessage>
+          ) : (
+            messages.map((message, index) => (
+              <Message key={index} isUser={message.role === 'user'}>
+                <MessageAvatar isUser={message.role === 'user'}>
+                  {message.role === 'user' ? <User size={20} /> : <Bot size={20} />}
+                </MessageAvatar>
+                <MessageContent isUser={message.role === 'user'}>
+                  <ReactMarkdown>{formatMessage(message.content)}</ReactMarkdown>
 
-    return (
-        <AppContainer>
-            <ChatContainer>
-                <Header>
-                    <Title>PikaHelper Chatbot</Title>
-                    <Subtitle>Trợ lý AI chuyên về hướng dẫn game PokeMMO</Subtitle>
-                    <ClearButton onClick={clearChat}>
-                        <Trash2 size={16} />
-                        Xóa lịch sử
-                    </ClearButton>
-                </Header>
+                  {/* Display images if available */}
+                  {message.images && message.images.length > 0 && (
+                    <ImageContainer>
+                      {message.images.map((image, idx) => (
+                        <ImageItem
+                          key={idx}
+                          src={image}
+                          alt={`Image ${idx + 1}`}
+                          onClick={() => window.open(image, '_blank')}
+                        />
+                      ))}
+                    </ImageContainer>
+                  )}
 
-                <MessagesContainer>
-                    {messages.length === 0 ? (
-                        <WelcomeMessage>
-                            <WelcomeTitle>Chào mừng đến với PikaHelper!</WelcomeTitle>
-                            <WelcomeText>
-                                Tôi là trợ lý AI chuyên về hướng dẫn game PokeMMO. Tôi có thể giúp bạn:
-                                <br />• Hướng dẫn tải và cài đặt game
-                                <br />• Hướng dẫn hoàn thành cốt truyện
-                                <br />• Tư vấn về PvP và xây dựng đội hình
-                                <br />• Hướng dẫn kiếm tiền trong game
-                                <br />• Và nhiều hơn nữa!
-                                <br /><br />Hãy đặt câu hỏi để bắt đầu!
-                            </WelcomeText>
-                        </WelcomeMessage>
-                    ) : (
-                        messages.map((message, index) => (
-                            <Message key={index} isUser={message.role === 'user'}>
-                                <MessageAvatar isUser={message.role === 'user'}>
-                                    {message.role === 'user' ? <User size={20} /> : <Bot size={20} />}
-                                </MessageAvatar>
-                                <MessageContent isUser={message.role === 'user'}>
-                                    <ReactMarkdown>{formatMessage(message.content)}</ReactMarkdown>
-                                    {message.sources && message.sources.length > 0 && (
-                                        <SourcesContainer isUser={message.role === 'user'}>
-                                            <strong>Nguồn tham khảo:</strong>
-                                            {message.sources.map((source, idx) => (
-                                                <SourceItem key={idx}>
-                                                    {source.source_id}. {source.file_name} (Độ tin cậy: {(source.score * 100).toFixed(1)}%)
-                                                </SourceItem>
-                                            ))}
-                                        </SourcesContainer>
-                                    )}
-                                </MessageContent>
-                            </Message>
-                        ))
-                    )}
+                  {/* Display links if available */}
+                  {message.links && message.links.length > 0 && (
+                    <LinkContainer>
+                      {message.links.map((link, idx) => (
+                        <LinkItem
+                          key={idx}
+                          href={link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            window.open(link, '_blank', 'noopener,noreferrer');
+                          }}
+                        >
+                          🔗 {link.length > 50 ? link.substring(0, 50) + '...' : link}
+                        </LinkItem>
+                      ))}
+                    </LinkContainer>
+                  )}
 
-                    {isLoading && (
-                        <Message>
-                            <MessageAvatar>
-                                <Bot size={20} />
-                            </MessageAvatar>
-                            <MessageContent>
-                                <LoadingMessage>
-                                    <Loader size={16} className="animate-spin" />
-                                    Đang suy nghĩ...
-                                </LoadingMessage>
-                            </MessageContent>
-                        </Message>
-                    )}
-                    <div ref={messagesEndRef} />
-                </MessagesContainer>
+                  {message.sources && message.sources.length > 0 && (
+                    <SourcesContainer isUser={message.role === 'user'}>
+                      <strong>Nguồn tham khảo:</strong>
+                      {message.sources.map((source, idx) => (
+                        <SourceItem key={idx}>
+                          {source.source_id}. {source.file_name} (Độ tin cậy: {(source.score * 100).toFixed(1)}%)
+                        </SourceItem>
+                      ))}
+                    </SourcesContainer>
+                  )}
+                </MessageContent>
+              </Message>
+            ))
+          )}
 
-                <InputContainer>
-                    <Input
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyPress={handleKeyPress}
-                        placeholder="Nhập câu hỏi của bạn về PokeMMO..."
-                        disabled={isLoading}
-                        rows={1}
-                    />
-                    <SendButton onClick={sendMessage} disabled={!input.trim() || isLoading}>
-                        <Send size={20} />
-                    </SendButton>
-                </InputContainer>
-            </ChatContainer>
-        </AppContainer>
-    );
+          {isLoading && (
+            <Message>
+              <MessageAvatar>
+                <Bot size={20} />
+              </MessageAvatar>
+              <MessageContent>
+                <LoadingMessage>
+                  <Loader size={16} className="animate-spin" />
+                  Đang suy nghĩ...
+                </LoadingMessage>
+              </MessageContent>
+            </Message>
+          )}
+          <div ref={messagesEndRef} />
+        </MessagesContainer>
+
+        <InputContainer>
+          <Input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyPress={handleKeyPress}
+            placeholder="Nhập câu hỏi của bạn về PokeMMO..."
+            disabled={isLoading}
+            rows={1}
+          />
+          <SendButton onClick={sendMessage} disabled={!input.trim() || isLoading}>
+            <Send size={20} />
+          </SendButton>
+        </InputContainer>
+      </ChatContainer>
+    </AppContainer>
+  );
 }
 
 export default App;

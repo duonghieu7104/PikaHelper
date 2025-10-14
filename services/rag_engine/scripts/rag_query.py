@@ -72,7 +72,7 @@ class RAGQueryEngine:
             return None
     
     def search_documents(self, query: str, limit: int = 5, score_threshold: float = 0.6) -> List[Dict[str, Any]]:
-        """Search in documents collection with high threshold"""
+        """Search in documents collection with high threshold and image boost"""
         logger.info(f"🔍 Searching documents for: '{query}' (threshold: {score_threshold})")
         
         try:
@@ -81,18 +81,36 @@ class RAGQueryEngine:
             if query_embedding is None:
                 return []
             
-            # Search in documents collection
+            # Search in documents collection with higher limit to get more candidates
             results = self.qdrant_client.search(
                 collection_name="documents_collection",
                 query_vector=query_embedding,
-                limit=limit,
-                score_threshold=score_threshold,
+                limit=limit * 3,  # Get 3x more results for filtering
+                score_threshold=score_threshold * 0.8,  # Lower threshold to get more candidates
                 with_payload=True,
                 with_vectors=False
             )
             
-            logger.info(f"📊 Found {len(results)} document results (threshold: {score_threshold})")
-            return results
+            # Boost score for chunks with images
+            boosted_results = []
+            for result in results:
+                payload = result.payload
+                metadata = payload.get('metadata', {})
+                has_images = metadata.get('has_images', False)
+                
+                # Boost score by 0.1 for chunks with images
+                if has_images:
+                    result.score += 0.1
+                    logger.info(f"📸 Boosted score for chunk with images: {result.score:.3f}")
+                
+                boosted_results.append(result)
+            
+            # Sort by boosted score and take top results
+            boosted_results.sort(key=lambda x: x.score, reverse=True)
+            final_results = boosted_results[:limit]
+            
+            logger.info(f"📊 Found {len(final_results)} document results (threshold: {score_threshold})")
+            return final_results
             
         except Exception as e:
             logger.error(f"❌ Failed to search documents: {e}")
@@ -139,7 +157,7 @@ class RAGQueryEngine:
                 score = result.score
                 
                 context_parts.append(f"{i}. **{file_name}** (Độ liên quan: {score:.3f})")
-                context_parts.append(f"   {content[:600]}...")
+                context_parts.append(f"   {content[:1200]}...")
                 context_parts.append("")
         
         # Add Q&A context (high quality only)
@@ -152,7 +170,7 @@ class RAGQueryEngine:
                 score = result.score
                 
                 context_parts.append(f"{i}. **Q:** {question} (Độ liên quan: {score:.3f})")
-                context_parts.append(f"   **A:** {answer[:400]}...")
+                context_parts.append(f"   **A:** {answer[:800]}...")
                 context_parts.append("")
         
         return "\n".join(context_parts)
@@ -230,7 +248,8 @@ Bạn là một trợ lý AI chuyên về PokeMMO, một game Pokemon online. H�
                         "content": r.payload.get('content', '')[:300] + "...",
                         "score": r.score,
                         "source": "document",
-                        "quality": "high" if r.score >= 0.6 else "medium"
+                        "quality": "high" if r.score >= 0.6 else "medium",
+                        "metadata": r.payload.get('metadata', {})  # Include full metadata
                     }
                     for r in doc_results
                 ],
