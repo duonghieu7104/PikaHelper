@@ -148,7 +148,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./services/data_processor:/app # Mount entire service folder
-      - ./scripts:/app/scripts # Mount scripts folder
+      - ./services/data_processor/scripts:/app/scripts # Mount scripts folder
     depends_on:
       - minio
       - postgres
@@ -232,6 +232,20 @@ services:
       - ./services/chatbot_ui/public:/app/public # Mount public folder
     depends_on:
       - chatbot-api
+    networks:
+      - pika_network
+
+  # Adminer - PostgreSQL Web UI
+  adminer:
+    image: adminer:latest
+    container_name: pika_adminer
+    ports:
+      - "8082:8080"
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha
+    depends_on:
+      - postgres
     networks:
       - pika_network
 
