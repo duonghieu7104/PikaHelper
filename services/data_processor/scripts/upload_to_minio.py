@@ -54,7 +54,20 @@ class MinIOUploader:
             logger.error(f"❌ Failed to create bucket: {e}")
             raise
     
-    def upload_file(self, local_path: Path, object_name: str) -> bool:
+    def ensure_qa_bucket(self):
+        """Create qa-data bucket for Q&A JSON files"""
+        bucket_name = "qa-data"
+        try:
+            if not self.client.bucket_exists(bucket_name):
+                self.client.make_bucket(bucket_name)
+                logger.info(f"✅ Created bucket: {bucket_name}")
+            else:
+                logger.info(f"✅ Bucket {bucket_name} already exists")
+        except S3Error as e:
+            logger.error(f"❌ Failed to create bucket: {e}")
+            raise
+    
+    def upload_file(self, local_path: Path, object_name: str, bucket_name: str = "bronze-raw") -> bool:
         """Upload single file to MinIO"""
         try:
             # Get file size
@@ -68,14 +81,14 @@ class MinIOUploader:
             # Upload file
             with open(local_path, 'rb') as file_data:
                 self.client.put_object(
-                    bucket_name="bronze-raw",
+                    bucket_name=bucket_name,
                     object_name=object_name,
                     data=file_data,
                     length=file_size,
                     content_type=content_type
                 )
             
-            logger.info(f"✅ Uploaded: {object_name} ({file_size} bytes)")
+            logger.info(f"✅ Uploaded: {object_name} ({file_size} bytes) to {bucket_name}")
             return True
             
         except S3Error as e:
@@ -104,6 +117,16 @@ class MinIOUploader:
                     logger.info(f"⏭️ Skipping temp file: {file_path.name}")
                     continue
                 
+                # Skip Python files
+                if file_path.suffix.lower() == '.py':
+                    logger.info(f"⏭️ Skipping Python file: {file_path.name}")
+                    continue
+                
+                # Only upload DOCX and JSON files
+                if file_path.suffix.lower() not in ['.docx', '.json']:
+                    logger.info(f"⏭️ Skipping non-DOCX/JSON file: {file_path.name}")
+                    continue
+                
                 # Create object name (relative path from data/raw)
                 try:
                     # Get relative path from data/raw
@@ -126,9 +149,36 @@ class MinIOUploader:
         logger.info(f"   Failed uploads: {total_files - uploaded_count}")
         
         return uploaded_count
+    
+    def upload_qa_json(self, json_file: Path) -> bool:
+        """Upload Q&A JSON file to qa-data bucket"""
+        try:
+            # Ensure qa-data bucket exists
+            self.ensure_qa_bucket()
+            
+            # Create object name with timestamp
+            from datetime import datetime
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            object_name = f"qa_pairs_{timestamp}.json"
+            
+            logger.info(f"📤 Uploading Q&A JSON: {json_file.name}")
+            
+            # Upload to qa-data bucket
+            success = self.upload_file(json_file, object_name, "qa-data")
+            
+            if success:
+                logger.info(f"✅ Q&A data uploaded successfully: {object_name}")
+                return True
+            else:
+                logger.error(f"❌ Failed to upload Q&A data")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error uploading Q&A JSON: {e}")
+            return False
 
 def main():
-    """Main function to upload data files"""
+    """Main function to upload data files and Q&A JSON"""
     logger.info("🚀 Starting data upload to MinIO...")
     
     try:
@@ -153,6 +203,18 @@ def main():
             logger.info(f"✅ Upload completed! {uploaded_count} files uploaded to MinIO")
         else:
             logger.warning("⚠️ No files were uploaded")
+        
+        # Check for Q&A JSON file and upload it
+        qa_json_path = data_dir / "qa_pairs.json"
+        if qa_json_path.exists():
+            logger.info("📋 Found Q&A JSON file, uploading to qa-data bucket...")
+            qa_success = uploader.upload_qa_json(qa_json_path)
+            if qa_success:
+                logger.info("✅ Q&A data uploaded successfully!")
+            else:
+                logger.warning("⚠️ Failed to upload Q&A data")
+        else:
+            logger.info("ℹ️ No qa_pairs.json found in data/raw directory")
             
     except Exception as e:
         logger.error(f"❌ Upload failed: {e}")

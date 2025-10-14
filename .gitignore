@@ -130,3 +130,4 @@ test_data/
 sample_data/
 /data/raw
 /models
+/cache

@@ -175,7 +175,9 @@ services:
     volumes:
       - ./models:/app/models # Mount models folder
       - ./services/embedding_service:/app # Mount entire service folder
-      - ./scripts:/app/scripts # Mount scripts folder
+      - ./services/embedding_service/scripts:/app/scripts # Mount scripts folder
+      - ./services/rag_engine/scripts:/app/rag_scripts # Mount RAG engine scripts
+      - ./cache:/root/.cache # Mount cache folder for model persistence
     depends_on:
       - qdrant
       - postgres

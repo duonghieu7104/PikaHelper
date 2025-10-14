@@ -1,3 +1,8 @@
-đẩy data local lên minio: docker-compose run --rm data-processor python scripts/upload_to_minio.py
+- đẩy data local lên minio: docker-compose run --rm data-processor python scripts/upload_to_minio.py
 
-extract image: docker-compose run --rm data-processor python scripts/extract_docx.py
+- extract image: docker-compose run --rm data-processor python scripts/extract_docx.py
+
+- upload silver q-a json: docker-compose run --rm data-processor python scripts/process_qa_json.py
+
+
+- tạo embedding: docker-compose run --rm embedding-service python scripts/generate_embeddings.py
