@@ -171,7 +171,15 @@ Dự án này được phát hành dưới giấy phép MIT.
 
 ## 📚 Citation
 
-You can cite our work as below:
+### Model Embedding được sử dụng
+
+Dự án PikaHelper sử dụng model embedding tiếng Việt `DEk21_hcmute_embedding` để xử lý văn bản tiếng Việt trong hệ thống RAG. Model này được sử dụng để:
+
+- Tạo vector embedding cho các chunk văn bản từ tài liệu PokeMMO
+- Thực hiện tìm kiếm ngữ nghĩa trong Qdrant vector database
+- Hỗ trợ chatbot trả lời câu hỏi bằng tiếng Việt
+
+**Citation cho model embedding:**
 
 ```bibtex
 @misc{DEk21_hcmute_embedding,
@@ -179,8 +187,11 @@ You can cite our work as below:
   author={QUANG HUY},
   year={2025},
   publisher={Huggingface},
+  url={https://huggingface.co/huyydangg/DEk21_hcmute_embedding}
 }
 ```
+
+
 
 ## 📞 Hỗ trợ
 
