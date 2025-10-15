@@ -12,6 +12,7 @@ PikaHelper là một hệ thống chatbot AI được thiết kế đặc biệt
 
 ## 🏗️ Kiến trúc hệ thống
 
+<img width="2012" height="1504" alt="Untitled-2025-10-15-0104" src="https://github.com/user-attachments/assets/fc78e210-ce5e-47b2-b555-9def207f334f" />
 
 
 ## 📋 Yêu cầu hệ thống
@@ -44,15 +45,6 @@ Thêm nội dung sau vào file `.env`:
 ```env
 # Gemini API Key - Bắt buộc để sử dụng AI
 GEMINI_API_KEY=your_gemini_api_key_here
-
-# Cấu hình database (tùy chọn - có thể giữ mặc định)
-POSTGRES_DB=pikadb
-POSTGRES_USER=pika_user
-POSTGRES_PASSWORD=pika_pass
-
-# Cấu hình MinIO (tùy chọn - có thể giữ mặc định)
-MINIO_ROOT_USER=admin
-MINIO_ROOT_PASSWORD=password123
 ```
 
 **Lưu ý quan trọng**: 
