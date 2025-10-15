@@ -75,25 +75,36 @@ docker-compose logs -f chatbot-api
 
 ## 📊 Xử lý dữ liệu
 
-### Bước 1: Truy cập Airflow Dashboard
+### Chạy pipeline xử lý dữ liệu
 
-1. Mở trình duyệt và truy cập: `http://localhost:8080`
-2. Đăng nhập với:
-   - **Username**: `admin`
-   - **Password**: `admin`
+Sau khi hệ thống đã khởi động hoàn tất, chạy các lệnh sau để xử lý dữ liệu:
 
-### Bước 2: Chạy pipeline xử lý dữ liệu
+#### Bước 1: Upload dữ liệu lên MinIO
+```bash
+docker-compose run --rm data-processor python scripts/upload_to_minio.py
+```
 
-1. Trong Airflow UI, tìm DAG `pikahelper_auto_pipeline`
-2. Bật DAG (toggle switch)
-3. Click vào DAG name để xem chi tiết
-4. Click nút **"Trigger DAG"** để chạy pipeline
+#### Bước 2: Trích xuất nội dung từ file DOCX
+```bash
+docker-compose run --rm data-processor python scripts/extract_docx.py
+```
 
-### Bước 3: Theo dõi quá trình xử lý
+#### Bước 3: Xử lý dữ liệu Q&A
+```bash
+docker-compose run --rm data-processor python scripts/process_qa_json.py
+```
+
+#### Bước 4: Tạo embedding và lưu vào Qdrant
+```bash
+docker-compose run --rm embedding-service python scripts/generate_embeddings.py
+```
+
+### Quy trình xử lý
 
 Pipeline sẽ thực hiện các bước sau:
+- **Upload**: Tải dữ liệu lên MinIO object storage
 - **Extract**: Đọc và xử lý các file .docx trong thư mục `data/raw/`
-- **Transform**: Chia nhỏ văn bản thành các chunk
+- **Transform**: Chia nhỏ văn bản thành các chunk và xử lý Q&A
 - **Load**: Tạo embedding và lưu vào Qdrant vector database
 
 ## 🎯 Sử dụng giao diện
@@ -115,7 +126,6 @@ Pipeline sẽ thực hiện các bước sau:
 |---------|------|-------|
 | **Chatbot UI** | 3000 | Giao diện web chính |
 | **Chatbot API** | 8000 | API backend |
-| **Airflow** | 8080 | Quản lý pipeline |
 | **Adminer** | 8082 | Quản lý database |
 | **MinIO** | 9000, 9001 | Object storage |
 | **PostgreSQL** | 5432 | Database chính |
