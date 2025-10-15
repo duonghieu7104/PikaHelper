@@ -12,7 +12,8 @@ PikaHelper là một hệ thống chatbot AI được thiết kế đặc biệt
 
 ## 🏗️ Kiến trúc hệ thống
 
-<img width="2012" height="1504" alt="Untitled-2025-10-15-0104" src="https://github.com/user-attachments/assets/fc78e210-ce5e-47b2-b555-9def207f334f" />
+<img width="2558" height="2214" alt="Untitled-2025-10-15-0104" src="https://github.com/user-attachments/assets/15a75e4f-5699-43b6-932e-8c2688a79ab0" />
+
 
 
 ## 📋 Yêu cầu hệ thống
@@ -60,6 +61,8 @@ docker-compose up -d
 # Kiểm tra trạng thái các container
 docker-compose ps
 ```
+<img width="1262" height="496" alt="15-10-2025screenshot-18-17-34-406" src="https://github.com/user-attachments/assets/8aa59a7c-93b4-4e5f-ae63-2047d0d20150" />
+
 
 ### Bước 4: Chờ hệ thống khởi động hoàn tất
 
@@ -80,14 +83,26 @@ docker-compose logs -f chatbot-api
 Sau khi hệ thống đã khởi động hoàn tất, chạy các lệnh sau để xử lý dữ liệu:
 
 #### Bước 1: Upload dữ liệu lên MinIO
+
+Có thể thay đổi dữ liệu khác để RAG truy xuất dữ liệu theo chủ đề của bạn.
+
+<img width="1528" height="665" alt="15-10-2025screenshot-18-22-16-419" src="https://github.com/user-attachments/assets/be8457a5-464a-414d-a8d5-bb10ca5d520b" />
+
+
 ```bash
 docker-compose run --rm data-processor python scripts/upload_to_minio.py
 ```
+
+<img width="1261" height="234" alt="15-10-2025screenshot-18-22-32-113" src="https://github.com/user-attachments/assets/007d801e-4c79-4527-87bf-5c534cfb8f5c" />
+
 
 #### Bước 2: Trích xuất nội dung từ file DOCX
 ```bash
 docker-compose run --rm data-processor python scripts/extract_docx.py
 ```
+
+<img width="1233" height="281" alt="15-10-2025screenshot-18-23-36-959" src="https://github.com/user-attachments/assets/bd63cd87-e2d6-4fef-98cf-f9f495df9e8d" />
+
 
 #### Bước 3: Xử lý dữ liệu Q&A
 ```bash
@@ -98,6 +113,9 @@ docker-compose run --rm data-processor python scripts/process_qa_json.py
 ```bash
 docker-compose run --rm embedding-service python scripts/generate_embeddings.py
 ```
+
+<img width="1248" height="439" alt="15-10-2025screenshot-18-25-24-025" src="https://github.com/user-attachments/assets/b2f68c76-3fcc-46fc-88a7-3dad7f710a38" />
+
 
 ### Quy trình xử lý
 
@@ -113,6 +131,9 @@ Pipeline sẽ thực hiện các bước sau:
 
 1. Mở trình duyệt và truy cập: `http://localhost:3000`
 2. Giao diện chatbot sẽ hiển thị
+
+<img width="1413" height="823" alt="15-10-2025screenshot-18-27-13-656" src="https://github.com/user-attachments/assets/8c9811a6-e511-4d6c-b98f-bffee6ef4712" />
+
 
 ### Bước 2: Bắt đầu chat
 
