@@ -1,5 +1,7 @@
 # PikaHelper - Hệ thống Chatbot AI cho PokeMMO
 
+Link video demo https://youtu.be/304lJJlljvk
+
 PikaHelper là một hệ thống chatbot AI được thiết kế đặc biệt để hỗ trợ người chơi PokeMMO. Hệ thống sử dụng RAG (Retrieval-Augmented Generation) để trả lời các câu hỏi về game dựa trên tài liệu hướng dẫn tiếng Việt.
 
 ## 🚀 Tính năng chính
