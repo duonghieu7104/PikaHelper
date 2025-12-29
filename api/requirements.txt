@@ -1,0 +1,23 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+python-multipart==0.0.6
+
+# Database
+psycopg2-binary==2.9.9
+
+# Vector DB
+qdrant-client==1.7.0
+
+# ML/AI
+sentence-transformers==2.2.2
+pyvi==0.1.1
+google-generativeai==0.3.1
+
+# MinIO
+minio==7.2.0
+
+# Utils
+python-docx==1.1.0
+Pillow==10.1.0
+

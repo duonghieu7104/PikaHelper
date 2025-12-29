@@ -1,5 +1,7 @@
+version: '3.8'
+
 services:
-  # MinIO - Object Storage for Raw Data (Bronze Layer)
+  # MinIO - Object Storage for Raw Data and Images
   minio:
     image: minio/minio:latest
     container_name: pika_minio
@@ -14,8 +16,9 @@ services:
       - minio_data:/data
     networks:
       - pika_network
+    restart: unless-stopped
 
-  # PostgreSQL - Metadata and Configuration Storage
+  # PostgreSQL - Metadata Storage
   postgres:
     image: postgres:15
     container_name: pika_postgres
@@ -30,8 +33,9 @@ services:
       - ./init_scripts:/docker-entrypoint-initdb.d
     networks:
       - pika_network
+    restart: unless-stopped
 
-  # Qdrant - Vector Database (Gold Layer)
+  # Qdrant - Vector Database
   qdrant:
     image: qdrant/qdrant:latest
     container_name: pika_qdrant
@@ -45,95 +49,44 @@ services:
       QDRANT__SERVICE__GRPC_PORT: 6334
     networks:
       - pika_network
+    restart: unless-stopped
 
-  # Redis - Caching and Session Management
-  redis:
-    image: redis:7-alpine
-    container_name: pika_redis
+  # Simple RAG API
+  rag-api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: pika_rag_api
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: admin
+      MINIO_SECRET_KEY: password123
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: pikadb
+      POSTGRES_USER: pika_user
+      POSTGRES_PASSWORD: pika_pass
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
     ports:
-      - "6379:6379"
+      - "8000:8000"
     volumes:
-      - redis_data:/data
-    networks:
-      - pika_network
-
-  # Apache Airflow - Database Initialization
-  airflow-init:
-    image: apache/airflow:2.7.3
-    container_name: pika_airflow_init
-    environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://pika_user:pika_pass@postgres:5432/pikadb
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-      _PIP_ADDITIONAL_REQUIREMENTS: 'python-docx pillow qdrant-client minio'
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
-      - ./data:/opt/airflow/data
-    command: >
-      bash -c "
-        airflow db init &&
-        airflow users create --username admin --firstname Admin --lastname User --role Admin --email admin@example.com --password admin
-      "
+      - ./api:/app/api
+      - ./scripts:/app/scripts
+      - ./cache:/root/.cache
     depends_on:
       - postgres
+      - qdrant
+      - minio
     networks:
       - pika_network
+    restart: unless-stopped
 
-  # Apache Airflow - Data Processing Orchestration
-  airflow-webserver:
-    image: apache/airflow:2.7.3
-    container_name: pika_airflow_webserver
-    environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://pika_user:pika_pass@postgres:5432/pikadb
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-      AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth'
-      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
-      _PIP_ADDITIONAL_REQUIREMENTS: 'python-docx pillow qdrant-client minio'
-    ports:
-      - "8080:8080"
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
-      - ./data:/opt/airflow/data
-    command: webserver
-    depends_on:
-      - postgres
-      - airflow-init
-    networks:
-      - pika_network
-
-  airflow-scheduler:
-    image: apache/airflow:2.7.3
-    container_name: pika_airflow_scheduler
-    environment:
-      AIRFLOW__CORE__EXECUTOR: LocalExecutor
-      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://pika_user:pika_pass@postgres:5432/pikadb
-      AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-      AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
-      _PIP_ADDITIONAL_REQUIREMENTS: 'python-docx pillow qdrant-client minio'
-    volumes:
-      - ./dags:/opt/airflow/dags
-      - ./logs:/opt/airflow/logs
-      - ./plugins:/opt/airflow/plugins
-      - ./data:/opt/airflow/data
-    command: scheduler
-    depends_on:
-      - postgres
-      - airflow-init
-    networks:
-      - pika_network
-
-  # Data Processing Service - Bronze to Silver Layer
+  # Data Processor (for running scripts)
   data-processor:
     build:
-      context: ./services/data_processor
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: scripts/Dockerfile
     container_name: pika_data_processor
     environment:
       MINIO_ENDPOINT: minio:9000
@@ -145,120 +98,25 @@ services:
       POSTGRES_PASSWORD: pika_pass
       QDRANT_HOST: qdrant
       QDRANT_PORT: 6333
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
     volumes:
       - ./data:/app/data
-      - ./services/data_processor:/app # Mount entire service folder
-      - ./services/data_processor/scripts:/app/scripts # Mount scripts folder
+      - ./scripts:/app/scripts
+      - ./cache:/root/.cache
     depends_on:
+      - postgres
+      - qdrant
       - minio
-      - postgres
-      - qdrant
     networks:
       - pika_network
-
-  # Embedding Service - Silver to Gold Layer
-  embedding-service:
-    build:
-      context: ./services/embedding_service
-      dockerfile: Dockerfile
-    container_name: pika_embedding_service
-    environment:
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
-      POSTGRES_HOST: postgres
-      POSTGRES_DB: pikadb
-      POSTGRES_USER: pika_user
-      POSTGRES_PASSWORD: pika_pass
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-    ports:
-      - "8001:8001"
-    volumes:
-      - ./models:/app/models # Mount models folder
-      - ./services/embedding_service:/app # Mount entire service folder
-      - ./services/embedding_service/scripts:/app/scripts # Mount scripts folder
-      - ./services/rag_engine/scripts:/app/rag_scripts # Mount RAG engine scripts
-      - ./cache:/root/.cache # Mount cache folder for model persistence
-    depends_on:
-      - qdrant
-      - postgres
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
-    networks:
-      - pika_network
-
-  # Chatbot API Service
-  chatbot-api:
-    build:
-      context: ./services/chatbot_api
-      dockerfile: Dockerfile
-    container_name: pika_chatbot_api
-    environment:
-      QDRANT_HOST: qdrant
-      QDRANT_PORT: 6333
-      REDIS_HOST: redis
-      REDIS_PORT: 6379
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
-      POSTGRES_HOST: postgres
-      POSTGRES_DB: pikadb
-      POSTGRES_USER: pika_user
-      POSTGRES_PASSWORD: pika_pass
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./services/chatbot_api:/app # Mount entire service folder
-      - ./services/rag_engine/scripts:/app/rag_scripts # Mount RAG engine scripts
-      - ./cache:/root/.cache # Mount cache folder for model persistence
-    depends_on:
-      - qdrant
-      - redis
-      - postgres
-    networks:
-      - pika_network
-
-  # Web UI for Chatbot
-  chatbot-ui:
-    build:
-      context: ./services/chatbot_ui
-      dockerfile: Dockerfile
-    container_name: pika_chatbot_ui
-    ports:
-      - "3000:3000"
-    environment:
-      REACT_APP_API_URL: http://localhost:8000
-    volumes:
-      - ./services/chatbot_ui/src:/app/src # Mount src folder for hot reload
-      - ./services/chatbot_ui/public:/app/public # Mount public folder
-    depends_on:
-      - chatbot-api
-    networks:
-      - pika_network
-
-  # Adminer - PostgreSQL Web UI
-  adminer:
-    image: adminer:latest
-    container_name: pika_adminer
-    ports:
-      - "8082:8080"
-    environment:
-      ADMINER_DEFAULT_SERVER: postgres
-      ADMINER_DESIGN: pepa-linha
-    depends_on:
-      - postgres
-    networks:
-      - pika_network
+    command: tail -f /dev/null  # Keep container running
 
 volumes:
   minio_data:
   postgres_data:
   qdrant_data:
-  redis_data:
-
 
 networks:
   pika_network:
     driver: bridge
+

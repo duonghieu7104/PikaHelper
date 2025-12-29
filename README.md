@@ -1,296 +1,344 @@
-# PikaHelper - Hệ thống Chatbot AI cho PokeMMO
+# PikaHelper - Simple RAG API
 
-Link video demo https://youtu.be/304lJJlljvk
+Hệ thống RAG API đơn giản cho PokeMMO, cung cấp REST API để tích hợp vào các ứng dụng web khác.
 
-PikaHelper là một hệ thống chatbot AI được thiết kế đặc biệt để hỗ trợ người chơi PokeMMO. Hệ thống sử dụng RAG (Retrieval-Augmented Generation) để trả lời các câu hỏi về game dựa trên tài liệu hướng dẫn tiếng Việt.
+## 🏗️ Kiến trúc
 
-## 🚀 Tính năng chính
+```
+┌─────────────────────────────────────┐
+│      Your Web Application           │
+└──────────────┬──────────────────────┘
+               │ HTTP/REST
+               ▼
+┌─────────────────────────────────────┐
+│         RAG API (Port 8000)         │
+│  - POST /api/query                  │
+│  - GET  /api/health                 │
+│  - GET  /api/stats                  │
+└──────┬──────────────┬───────────────┘
+       │              │
+       ▼              ▼
+┌──────────┐    ┌──────────┐
+│PostgreSQL│    │  Qdrant  │
+│  (Meta)  │    │(Vectors) │
+└──────────┘    └──────────┘
+       ▲              ▲
+       │              │
+┌──────┴──────────────┴───────┐
+│  MinIO (DOCX + Images)      │
+└─────────────────────────────┘
+```
 
-- **Chatbot AI thông minh**: Trả lời câu hỏi về PokeMMO bằng tiếng Việt
-- **Xử lý tài liệu**: Tự động xử lý và lập chỉ mục các file .docx
-- **Tìm kiếm ngữ nghĩa**: Sử dụng vector embedding để tìm kiếm thông tin chính xác
-- **Giao diện web thân thiện**: Chatbot UI đơn giản và dễ sử dụng
-- **Quản lý dữ liệu**: Hệ thống quản lý dữ liệu đa tầng (Bronze, Silver, Gold)
+## 📦 Services
 
-## 🏗️ Kiến trúc hệ thống
+- **PostgreSQL**: Lưu metadata (documents, chunks, qa_pairs)
+- **Qdrant**: Vector database cho embeddings
+- **MinIO**: Object storage cho DOCX files và images
+- **RAG API**: REST API endpoint
+- **Data Processor**: Container để chạy scripts xử lý data
 
-<img width="2558" height="2214" alt="Untitled-2025-10-15-0104" src="https://github.com/user-attachments/assets/15a75e4f-5699-43b6-932e-8c2688a79ab0" />
+## 🚀 Cài đặt và Sử dụng
 
-## 🔧 Tại sao không sử dụng LangChain? (Why No LangChain?)
-
-### Về Data Processor (Data Processor Architecture)
-
-Dự án này sử dụng một pipeline xử lý dữ liệu tùy chỉnh thay vì LangChain vì các lý do sau:
-
-#### 1. **Kiểm soát và minh bạch hoàn toàn** (Full Control & Transparency)
-- Kiểm soát trực tiếp từng bước xử lý (DOCX parsing, chunking, embedding generation)
-- Dễ dàng debug và theo dõi luồng dữ liệu từ Bronze → Silver → Gold layers
-- Không có abstraction layer che giấu logic xử lý
-
-#### 2. **Kiến trúc Microservices** (Microservices Architecture)
-- Mỗi service có trách nhiệm riêng biệt và được tách biệt hoàn toàn
-- **`data-processor`**: Xử lý DOCX extraction, chunking, và metadata extraction
-- **`embedding-service`**: Quản lý vector embeddings generation
-- Tích hợp trực tiếp giữa các services mà không cần abstraction overhead
-
-#### 3. **Tối ưu hóa cho tiếng Việt** (Vietnamese Language Optimization)
-- Tokenization tùy chỉnh cho tiếng Việt sử dụng `pyvi`
-- Model embedding chuyên biệt: `huyydangg/DEk21_hcmute_embedding`
-- Chiến lược chunking được điều chỉnh đặc biệt cho tài liệu tiếng Việt
-- Xử lý trực tiếp văn bản tiếng Việt mà không cần LangChain abstractions
-
-#### 4. **Yêu cầu xử lý đặc biệt** (Custom Requirements)
-- **Trích xuất hình ảnh**: Tự động trích xuất hình ảnh từ DOCX và lưu vào MinIO
-- **Trích xuất URL**: Phát hiện URL với regex và phân loại (video, download, community, official, external)
-- **Metadata phong phú**: Theo dõi hình ảnh, links, chunk indices, position mapping
-- **Chunking strategy**: Overlap chunking tùy chỉnh (1000 ký tự với 200 ký tự overlap)
-- **Tích hợp database**: Sử dụng trực tiếp PostgreSQL với JSONB cho metadata linh hoạt
-
-#### 5. **Dependencies nhẹ** (Lightweight Dependencies)
-- Chỉ sử dụng các thư viện cần thiết: `python-docx`, `minio`, `psycopg2-binary`, `qdrant-client`
-- Docker images nhỏ hơn và deployment nhanh hơn
-- Không có framework overhead
-
-#### 6. **Hiệu suất** (Performance Considerations)
-- Sử dụng trực tiếp các thư viện để đạt hiệu suất tốt hơn
-- Batch processing tùy chỉnh cho tập tài liệu lớn
-- Quản lý bộ nhớ hiệu quả cho image extraction
-- Tối ưu database queries mà không cần ORM overhead
-
-#### 7. **Tích hợp cụ thể** (Specific Integrations)
-- Tích hợp trực tiếp với MinIO S3-compatible storage
-- Sử dụng PostgreSQL JSONB native cho metadata linh hoạt
-- Thao tác trực tiếp với Qdrant vector database
-- Orchestration pipeline tùy chỉnh với Apache Airflow
-
-### Tính năng Data Processor
-
-Service `data-processor` cung cấp:
-
-- ✅ **DOCX Processing**: Trích xuất text, images, và links từ file `.docx`
-- ✅ **Smart Chunking**: Paragraph-aware chunking với overlap để bảo tồn ngữ cảnh
-- ✅ **Image Extraction**: Tự động trích xuất và upload hình ảnh lên MinIO
-- ✅ **URL Extraction**: Phát hiện URL bằng regex với context và categorization
-- ✅ **Metadata Tracking**: Metadata đầy đủ cho mỗi chunk (images, URLs, positions)
-- ✅ **Database Integration**: Lưu trữ trực tiếp vào PostgreSQL với JSONB
-- ✅ **Q&A Processing**: Pipeline riêng cho Q&A JSON files có cấu trúc
-
-## 📋 Yêu cầu hệ thống
-
-- **Docker & Docker Compose**: Phiên bản mới nhất
-- **RAM**: Tối thiểu 8GB (khuyến nghị 16GB)
-- **GPU**: Khuyến nghị có GPU NVIDIA để tăng tốc embedding
-- **Dung lượng**: Tối thiểu 10GB trống
-
-## 🛠️ Hướng dẫn cài đặt
-
-### Bước 1: Clone repository
+### Bước 1: Chuẩn bị
 
 ```bash
+# Clone repository
 git clone <repository-url>
 cd PikaHelper
-```
 
-### Bước 2: Tạo file .env
-
-Tạo file `.env` trong thư mục gốc của dự án:
-
-```bash
 # Tạo file .env
-touch .env
+echo "GEMINI_API_KEY=your_api_key_here" > .env
 ```
 
-Thêm nội dung sau vào file `.env`:
-
-```env
-# Gemini API Key - Bắt buộc để sử dụng AI
-GEMINI_API_KEY=your_gemini_api_key_here
-```
-
-**Lưu ý quan trọng**: 
-- Thay `your_gemini_api_key_here` bằng API key thực tế của bạn từ Google AI Studio
-- Không commit file `.env` vào git (đã có trong .gitignore)
-
-### Bước 3: Khởi động hệ thống
+### Bước 2: Khởi động hệ thống
 
 ```bash
 # Khởi động tất cả services
 docker-compose up -d
 
-# Kiểm tra trạng thái các container
+# Kiểm tra trạng thái
 docker-compose ps
 ```
-<img width="1262" height="496" alt="15-10-2025screenshot-18-17-34-406" src="https://github.com/user-attachments/assets/8aa59a7c-93b4-4e5f-ae63-2047d0d20150" />
 
-### Bước 4: Chờ hệ thống khởi động hoàn tất
-
-Hệ thống sẽ mất khoảng 2-5 phút để khởi động hoàn tất. Bạn có thể kiểm tra logs:
+### Bước 3: Xử lý dữ liệu
 
 ```bash
-# Xem logs của tất cả services
-docker-compose logs -f
+# 1. Upload DOCX files lên MinIO
+docker-compose exec data-processor python scripts/upload_to_minio.py
 
-# Xem logs của service cụ thể
-docker-compose logs -f chatbot-api
+# 2. Extract và chunk DOCX
+docker-compose exec data-processor python scripts/extract_docx.py
+
+# 3. Process Q&A JSON (nếu có)
+docker-compose exec data-processor python scripts/process_qa_json.py
+
+# 4. Generate embeddings
+docker-compose exec data-processor python scripts/generate_embeddings.py
 ```
 
-## 📊 Xử lý dữ liệu
+## 📡 API Endpoints
 
-### Chạy pipeline xử lý dữ liệu
+### 1. Query RAG System
 
-Sau khi hệ thống đã khởi động hoàn tất, chạy các lệnh sau để xử lý dữ liệu:
+**POST** `/api/query`
 
-#### Bước 1: Upload dữ liệu lên MinIO
-
-Có thể thay đổi dữ liệu khác để RAG truy xuất dữ liệu theo chủ đề của bạn.
-
-<img width="1528" height="665" alt="15-10-2025screenshot-18-22-16-419" src="https://github.com/user-attachments/assets/be8457a5-464a-414d-a8d5-bb10ca5d520b" />
-
-```bash
-docker-compose run --rm data-processor python scripts/upload_to_minio.py
+Request:
+```json
+{
+  "query": "Làm thế nào để tải game PokeMMO?",
+  "max_results": 5
+}
 ```
 
-<img width="1261" height="234" alt="15-10-2025screenshot-18-22-32-113" src="https://github.com/user-attachments/assets/007d801e-4c79-4527-87bf-5c534cfb8f5c" />
-
-#### Bước 2: Trích xuất nội dung từ file DOCX
-```bash
-docker-compose run --rm data-processor python scripts/extract_docx.py
+Response:
+```json
+{
+  "query": "Làm thế nào để tải game PokeMMO?",
+  "response": "Để tải game PokeMMO...",
+  "sources": [
+    {
+      "file_name": "huong_dan.docx",
+      "content": "...",
+      "score": 0.85,
+      "type": "document"
+    }
+  ],
+  "images": ["http://minio:9000/images/image1.png"],
+  "links": ["https://pokemmo.com/downloads"],
+  "metadata": {
+    "processing_time": 1.23,
+    "total_results": 3
+  },
+  "timestamp": "2025-12-29T10:00:00"
+}
 ```
 
-<img width="1233" height="281" alt="15-10-2025screenshot-18-23-36-959" src="https://github.com/user-attachments/assets/bd63cd87-e2d6-4fef-98cf-f9f495df9e8d" />
+### 2. Health Check
 
-#### Bước 3: Xử lý dữ liệu Q&A
-```bash
-docker-compose run --rm data-processor python scripts/process_qa_json.py
+**GET** `/api/health`
+
+Response:
+```json
+{
+  "status": "healthy",
+  "services": {
+    "api": "running",
+    "rag_engine": "initialized"
+  },
+  "timestamp": "2025-12-29T10:00:00"
+}
 ```
 
-#### Bước 4: Tạo embedding và lưu vào Qdrant
-```bash
-docker-compose run --rm embedding-service python scripts/generate_embeddings.py
+### 3. System Statistics
+
+**GET** `/api/stats`
+
+Response:
+```json
+{
+  "total_documents": 10,
+  "total_chunks": 150,
+  "total_embeddings": 150,
+  "timestamp": "2025-12-29T10:00:00"
+}
 ```
 
-<img width="1248" height="439" alt="15-10-2025screenshot-18-25-24-025" src="https://github.com/user-attachments/assets/b2f68c76-3fcc-46fc-88a7-3dad7f710a38" />
+## 🔧 Cấu hình
 
-### Quy trình xử lý
+### Environment Variables
 
-Pipeline sẽ thực hiện các bước sau:
-- **Upload**: Tải dữ liệu lên MinIO object storage
-- **Extract**: Đọc và xử lý các file .docx trong thư mục `data/raw/`
-- **Transform**: Chia nhỏ văn bản thành các chunk và xử lý Q&A
-- **Load**: Tạo embedding và lưu vào Qdrant vector database
+```env
+# Gemini API
+GEMINI_API_KEY=your_api_key
 
-### Chi tiết Data Processing Pipeline
+# MinIO
+MINIO_ENDPOINT=minio:9000
+MINIO_ACCESS_KEY=admin
+MINIO_SECRET_KEY=password123
 
-```
-Bronze Layer (MinIO) → Silver Layer (PostgreSQL) → Gold Layer (Qdrant)
-```
+# PostgreSQL
+POSTGRES_HOST=postgres
+POSTGRES_DB=pikadb
+POSTGRES_USER=pika_user
+POSTGRES_PASSWORD=pika_pass
 
-1. **Bronze Layer**: Raw DOCX files được lưu trữ trong MinIO
-2. **Silver Layer**: Processed chunks với metadata đầy đủ trong PostgreSQL
-3. **Gold Layer**: Vector embeddings trong Qdrant cho semantic search
-
-Mỗi chunk được xử lý với:
-- Content text (đã được chunked với overlap)
-- Associated images (URLs từ MinIO)
-- Extracted URLs với categorization
-- Metadata đầy đủ (chunk index, positions, counts)
-
-## 🎯 Sử dụng giao diện
-
-### Bước 1: Truy cập Chatbot UI
-
-1. Mở trình duyệt và truy cập: `http://localhost:3000`
-2. Giao diện chatbot sẽ hiển thị
-
-<img width="1413" height="823" alt="15-10-2025screenshot-18-27-13-656" src="https://github.com/user-attachments/assets/8c9811a6-e511-4d6c-b98f-bffee6ef4712" />
-
-### Bước 2: Bắt đầu chat
-
-1. Nhập câu hỏi về PokeMMO bằng tiếng Việt
-2. Ví dụ: "Làm thế nào để tải game PokeMMO?"
-3. Hệ thống sẽ trả lời dựa trên tài liệu đã được xử lý
-
-## 🔧 Các dịch vụ và cổng
-
-| Service | Port | Mô tả |
-|---------|------|-------|
-| **Chatbot UI** | 3000 | Giao diện web chính |
-| **Chatbot API** | 8000 | API backend |
-| **Adminer** | 8082 | Quản lý database |
-| **MinIO** | 9000, 9001 | Object storage |
-| **PostgreSQL** | 5432 | Database chính |
-| **Qdrant** | 6333, 6334 | Vector database |
-| **Redis** | 6379 | Cache |
-
-### Dừng hệ thống
-
-```bash
-# Dừng tất cả services
-docker-compose down
-
-# Dừng và xóa volumes (cẩn thận - sẽ mất dữ liệu)
-docker-compose down -v
+# Qdrant
+QDRANT_HOST=qdrant
+QDRANT_PORT=6333
 ```
 
 ## 📁 Cấu trúc thư mục
 
 ```
 PikaHelper/
-├── data/raw/              # Tài liệu gốc (.docx files)
-├── dags/                  # Airflow DAGs
-├── services/              # Các microservices
-│   ├── chatbot_api/       # API backend
-│   ├── chatbot_ui/        # Web UI
-│   ├── data_processor/    # Xử lý dữ liệu (Custom implementation, no LangChain)
-│   │   ├── scripts/
-│   │   │   ├── extract_docx.py      # DOCX text/image/URL extraction
-│   │   │   ├── process_qa_json.py   # Q&A processing
-│   │   │   └── upload_to_minio.py   # MinIO upload utility
-│   │   └── requirements.txt
-│   └── embedding_service/ # Tạo embedding
-├── models/                # Model files
-├── cache/                 # Cache cho models
-└── docker-compose.yml     # Cấu hình Docker
+├── api/                    # REST API
+│   ├── main.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── scripts/                # Data processing scripts
+│   ├── upload_to_minio.py
+│   ├── extract_docx.py
+│   ├── process_qa_json.py
+│   ├── generate_embeddings.py
+│   ├── rag_query.py
+│   ├── requirements.txt
+│   └── Dockerfile
+├── data/
+│   └── raw/               # DOCX files để upload
+├── init_scripts/
+│   └── init_db.sql        # Database schema
+├── docker-compose.yml
+└── .env
 ```
 
-## 🤝 Đóng góp
+## 🌐 Tích hợp vào Web Application
 
-1. Fork repository
-2. Tạo feature branch
-3. Commit changes
-4. Push to branch
-5. Tạo Pull Request
+### JavaScript/TypeScript Example
+
+```javascript
+// Query RAG API
+async function queryRAG(question) {
+  const response = await fetch('http://localhost:8000/api/query', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query: question,
+      max_results: 5
+    })
+  });
+
+  const data = await response.json();
+
+  console.log('Answer:', data.response);
+  console.log('Sources:', data.sources);
+  console.log('Images:', data.images);
+  console.log('Links:', data.links);
+
+  return data;
+}
+
+// Usage
+queryRAG('Làm thế nào để tải game PokeMMO?');
+```
+
+### Python Example
+
+```python
+import requests
+
+def query_rag(question: str):
+    response = requests.post(
+        'http://localhost:8000/api/query',
+        json={
+            'query': question,
+            'max_results': 5
+        }
+    )
+
+    data = response.json()
+
+    print('Answer:', data['response'])
+    print('Sources:', data['sources'])
+    print('Images:', data['images'])
+    print('Links:', data['links'])
+
+    return data
+
+# Usage
+query_rag('Làm thế nào để tải game PokeMMO?')
+```
+
+## 🛠️ Quản lý
+
+### Xem logs
+
+```bash
+# API logs
+docker-compose logs -f rag-api
+
+# Data processor logs
+docker-compose logs -f data-processor
+
+# All services
+docker-compose logs -f
+```
+
+### Dừng hệ thống
+
+```bash
+# Dừng services
+docker-compose down
+
+# Dừng và xóa volumes (cẩn thận!)
+docker-compose down -v
+```
+
+### Restart services
+
+```bash
+# Restart API
+docker-compose restart rag-api
+
+# Restart all
+docker-compose restart
+```
+
+## 📊 Ports
+
+| Service | Port | Description |
+|---------|------|-------------|
+| RAG API | 8000 | REST API endpoint |
+| PostgreSQL | 5432 | Database |
+| Qdrant | 6333 | Vector DB HTTP |
+| Qdrant gRPC | 6334 | Vector DB gRPC |
+| MinIO API | 9000 | Object storage |
+| MinIO Console | 9001 | MinIO web UI |
+
+## 🔍 Troubleshooting
+
+### API không khởi động được
+
+```bash
+# Check logs
+docker-compose logs rag-api
+
+# Rebuild
+docker-compose build rag-api
+docker-compose up -d rag-api
+```
+
+### Embeddings không được tạo
+
+```bash
+# Check Qdrant
+curl http://localhost:6333/collections
+
+# Re-run embedding generation
+docker-compose exec data-processor python scripts/generate_embeddings.py
+```
+
+### MinIO không kết nối được
+
+```bash
+# Check MinIO
+docker-compose logs minio
+
+# Access MinIO console
+# http://localhost:9001
+# Username: admin
+# Password: password123
+```
+
+## 📝 Notes
+
+- API sử dụng Gemini 2.5 Flash cho response generation
+- Vietnamese embedding model: `huyydangg/DEk21_hcmute_embedding` (768D)
+- Quality thresholds: Documents > 0.6, Q&A > 0.7
+- Images được boost +0.1 score
 
 ## 📄 License
 
-Dự án này được phát hành dưới giấy phép MIT.
+MIT License
 
-## 📚 Citation
-
-### Model Embedding được sử dụng
-
-Dự án PikaHelper sử dụng model embedding tiếng Việt `DEk21_hcmute_embedding` để xử lý văn bản tiếng Việt trong hệ thống RAG. Model này được sử dụng để:
-
-- Tạo vector embedding cho các chunk văn bản từ tài liệu PokeMMO
-- Thực hiện tìm kiếm ngữ nghĩa trong Qdrant vector database
-- Hỗ trợ chatbot trả lời câu hỏi bằng tiếng Việt
-
-**Citation cho model embedding:**
-
-```bibtex
-@misc{DEk21_hcmute_embedding,
-  title={DEk21_hcmute_embedding: A Vietnamese Text Embedding},
-  author={QUANG HUY},
-  year={2025},
-  publisher={Huggingface},
-  url={https://huggingface.co/huyydangg/DEk21_hcmute_embedding}
-}
-```
-
-## 📞 Hỗ trợ
-
-Nếu gặp vấn đề, vui lòng tạo issue trên GitHub hoặc liên hệ qua email.
-
----
-
-**Lưu ý**: Đảm bảo bạn có API key hợp lệ từ Google AI Studio để sử dụng tính năng AI của hệ thống.
